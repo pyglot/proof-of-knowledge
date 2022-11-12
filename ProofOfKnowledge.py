@@ -60,18 +60,21 @@ class ProofOfKnowledge(sp.Contract):
         """Initializes the contract.
         Parameters
         ----------
-        proofs: sp.TBigMap(ProofOfKnowledge.CLAIM_HASH, ProofOfKnowledge.CLAIM_DATA)
-        """
+        proofs: sp.TBigMap(ProofOfKnowledge.CLAIM_KEY, ProofOfKnowledge.CLAIM_DATA)            
+        """        
+
         # Define the contract storage data types for clarity
         self.init_type(sp.TRecord(
             metadata=sp.TMap(sp.TString, sp.TString),
-            proofs=sp.TBigMap(ProofOfKnowledge.CLAIM_KEY, ProofOfKnowledge.CLAIM_DATA),
+            proofs=sp.TBigMap(ProofOfKnowledge.CLAIM_KEY, ProofOfKnowledge.CLAIM_DATA),    
             )
         )
+
         metadata = {
             "name": "Proof of Knowledge",
             "description": "Prove you knew of a file or hashable object. Optionally claim origination, copyright, etc.",
         }
+
         # Initialize the contract storage
         self.init( metadata=metadata, proofs=sp.big_map() )
 
@@ -84,7 +87,7 @@ class ProofOfKnowledge(sp.Contract):
             claim_copyright=sp.TBool,
             claim_innovation=sp.TBool,
             claim_message=sp.TOption(sp.TString),
-            claimed_on_behalf_of=sp.TOption(sp.TString),
+            claimed_on_behalf_of=sp.TOption(sp.TString),            
             ).layout(
                 ("hash", ("claim_origination", ("claim_copyright", ("claim_innovation", ("claim_message","claimed_on_behalf_of")))))
             )
@@ -108,6 +111,16 @@ class ProofOfKnowledge(sp.Contract):
         claim_id = self.get_claim_key(sp.source, hash)
         del self.data.proofs[claim_id]
 
+    @sp.onchain_view()
+    def has_claim(self, params):
+        sp.set_type(params, ProofOfKnowledge.CLAIM_KEY )
+        # sp.result is used to return the view result (the contract storage in this case)
+        claim_id = self.get_claim_key(params.claimant, params.hash)
+        sp.if self.data.proofs.contains(claim_id):
+            sp.result(sp.bool(True))
+        sp.else:
+            sp.result(sp.bool(False))
+
 if "templates" not in __name__:
     @sp.add_test(name = "ProofOfKnowledgeScenario")
     def test():
@@ -117,22 +130,24 @@ if "templates" not in __name__:
         scenario.h1("POK")
         scenario += c1
         c1.claim(sp.record(
-            hash="3dc1115d86910942af0d1b0bee7183e45a9f2b777f503f895546254ffdcb5017", claim_message=sp.none, claimed_on_behalf_of=sp.none,
+            hash="3dc1115d86910942af0d1b0bee7183e45a9f2b777f503f895546254ffdcb5017", claim_message=sp.none, claimed_on_behalf_of=sp.none, 
             claim_origination=sp.bool(True), claim_copyright=sp.bool(True), claim_innovation=sp.bool(True)
             )).run(valid=True, sender=some_guy)
         c1.claim(sp.record(
-            hash="abc2", claim_message=sp.some("msg"), claimed_on_behalf_of=sp.none,
+            hash="abc2", claim_message=sp.some("msg"), claimed_on_behalf_of=sp.none, 
             claim_origination=sp.bool(False), claim_copyright=sp.bool(True), claim_innovation=sp.bool(True)
             )).run(sender=some_guy, amount=sp.mutez(10),valid=False)
         c1.claim(sp.record(
-            hash="abc2", claim_message=sp.some("msg"), claimed_on_behalf_of=sp.none,
+            hash="abc2", claim_message=sp.some("msg"), claimed_on_behalf_of=sp.none, 
             claim_origination=sp.bool(False), claim_copyright=sp.bool(True), claim_innovation=sp.bool(True)
             )).run(sender=some_guy, amount=sp.mutez(0),valid=True)
         c1.claim(sp.record(
-            hash="abc2", claim_message=sp.some("msg"), claimed_on_behalf_of=sp.some("Yo"),
+            hash="abc2", claim_message=sp.some("msg"), claimed_on_behalf_of=sp.some("Yo"), 
             claim_origination=sp.bool(False), claim_copyright=sp.bool(True), claim_innovation=sp.bool(True)
             )).run(valid=True, sender=some_guy)
         c1.withdraw_claim("notexisting").run(valid=True, sender=some_guy)
-        c1.withdraw_claim("abc2").run(valid=True, sender=some_guy)
-
+        scenario.verify(c1.has_claim(c1.get_claim_key(some_guy.address,"abc2"))==sp.bool(True))
+        c1.withdraw_claim("abc2").run(valid=True, sender=some_guy)        
+        scenario.verify(c1.has_claim(c1.get_claim_key(some_guy.address,"abc2"))==sp.bool(False))
+        
     sp.add_compilation_target("Proof Of Knowledge", ProofOfKnowledge())
